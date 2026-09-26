@@ -42,16 +42,29 @@ class MonitoringAlert:
     judge_fails: int = 0
 
     def check_metrics(self) -> list[Alert]:
-        """TODO: compute rates, append Alert objects when thresholds exceeded."""
-        raise NotImplementedError("Implement MonitoringAlert.check_metrics")
+        """Compute threshold breaches without emitting duplicate alerts on re-check."""
+        checks = [
+            ("block_rate", self.blocked_requests / self.total_requests if self.total_requests else 0.0,
+             self.block_rate_threshold, "Blocked-request rate is above threshold"),
+            ("rate_limit_hits", float(self.rate_limit_hits), float(self.rate_limit_hit_threshold),
+             "Rate-limit hits are above threshold"),
+            ("judge_fail_rate", self.judge_fails / self.judge_checks if self.judge_checks else 0.0,
+             self.judge_fail_rate_threshold, "Safety-judge failure rate is above threshold"),
+        ]
+        for metric, value, threshold, message in checks:
+            if value > threshold and not any(a.metric == metric for a in self.alerts):
+                self.alerts.append(Alert(metric, value, threshold, message))
+        return self.alerts
 
     def export_json(self, filepath: str | None = None):
         """TODO: write metrics + alerts to JSON under repo-root ``outputs/`` by default.
         Use ``filepath or default_metrics_path()`` so running from ``src/`` does not
         create ``src/outputs/``.
         """
-        _ = filepath or default_metrics_path()
-        raise NotImplementedError("Implement MonitoringAlert.export_json")
+        path = Path(filepath or default_metrics_path())
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(self.snapshot(), ensure_ascii=False, indent=2), encoding="utf-8")
+        return path
 
     def snapshot(self) -> dict:
         block_rate = (
